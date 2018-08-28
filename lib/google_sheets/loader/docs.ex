@@ -27,6 +27,7 @@ defmodule GoogleSheets.Loader.Docs do
   @behaviour GoogleSheets.Loader
   @connect_timeout 2_000
   @receive_timeout 120_000
+  @max_retries 5
 
   @doc """
   Load spreadsheet from Google sheets using the URL specified in config[:url] key.
@@ -49,11 +50,26 @@ defmodule GoogleSheets.Loader.Docs do
     load_spreadsheet(previous_version, [url], sheets)
   end
 
+  defp download_sheet_document(url, max_tries) do
+    if max_tries <= 0 do
+      {:error, :max_retries_reached}
+    else
+      case HTTPoison.get url, [], [timeout: @connect_timeout, recv_timeout: @receive_timeout] do
+        {:ok, %HTTPoison.Response{status_code: 200} = response} ->
+          {:ok, response}
+        {:ok, %HTTPoison.Response{status_code: 503} = response} ->
+          download_sheet_document(url, max_tries - 1)
+        resp ->
+          {:error, :unexpected_error, resp}
+      end
+    end
+  end
+
   # Fetch Atom feed describing feed and request individual sheets if not modified.
   defp load_spreadsheet(previous_version, urls, sheets) when is_list(urls) do
     bodies = Enum.map(urls,
       fn url ->
-        {:ok, %HTTPoison.Response{status_code: 200} = response} = HTTPoison.get url, [], [timeout: @connect_timeout, recv_timeout: @receive_timeout]
+        {:ok, response} = download_sheet_document(url, @max_retries)
         response.body
       end
     )
