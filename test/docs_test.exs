@@ -6,8 +6,9 @@ defmodule DocsTest do
   alias GoogleSheets.Loader.Docs
 
   @url "https://spreadsheets.google.com/feeds/worksheets/1k-N20RmT62RyocEu4-MIJm11DZqlZrzV89fGIddDzIs/public/basic"
+  @url2 "https://spreadsheets.google.com/feeds/worksheets/1P6KGe8ajcSNxk6oAWvXyPw4XcicKe2gex8p7lKz-uXU/public/basic"
 
-  test "Fetch all sheets" do
+  test "Fetch all sheets from one document" do
     config = [url: @url]
     assert {:ok, version, worksheets} = Docs.load nil, :spreadsheet_id, config
 
@@ -17,6 +18,21 @@ defmodule DocsTest do
     assert Enum.any?(worksheets, fn(x) -> x.name == "KeyTable" end)
     assert Enum.any?(worksheets, fn(x) -> x.name == "KeyIndexTable" end)
     assert Enum.any?(worksheets, fn(x) -> x.name == "Ignored" end)
+
+    assert {:ok, :unchanged} = Docs.load version, :spreadsheet_id, config
+  end
+
+  test "Fetch all sheets from multiple documents" do
+    config = [url: [@url, @url2]]
+    assert {:ok, version, worksheets} = Docs.load nil, :spreadsheet_id, config
+
+    #assert version == "a3d4c20066a7f5ebebde18fc4f7ad1ecd6cb96ac"
+    assert length(worksheets) == 5
+    assert Enum.any?(worksheets, fn(x) -> x.name == "KeyValue" end)
+    assert Enum.any?(worksheets, fn(x) -> x.name == "KeyTable" end)
+    assert Enum.any?(worksheets, fn(x) -> x.name == "KeyIndexTable" end)
+    assert Enum.any?(worksheets, fn(x) -> x.name == "Ignored" end)
+    assert Enum.any?(worksheets, fn(x) -> x.name == "Table2" end)
 
     assert {:ok, :unchanged} = Docs.load version, :spreadsheet_id, config
   end

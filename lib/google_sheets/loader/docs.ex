@@ -45,27 +45,43 @@ defmodule GoogleSheets.Loader.Docs do
     end
   end
 
+  defp load_spreadsheet(previous_version, url, sheets) when is_binary(url) do
+    load_spreadsheet(previous_version, [url], sheets)
+  end
+
   # Fetch Atom feed describing feed and request individual sheets if not modified.
-  defp load_spreadsheet(previous_version, url, sheets) do
-    {:ok, %HTTPoison.Response{status_code: 200} = response} = HTTPoison.get url, [], [timeout: @connect_timeout, recv_timeout: @receive_timeout]
+  defp load_spreadsheet(previous_version, urls, sheets) when is_list(urls) do
+    bodies = Enum.map(urls,
+      fn url ->
+        {:ok, %HTTPoison.Response{status_code: 200} = response} = HTTPoison.get url, [], [timeout: @connect_timeout, recv_timeout: @receive_timeout]
+        response.body
+      end
+    )
 
-    updated = response.body
-    |> xpath(~x"//feed/updated/text()")
-    |> List.to_string
-    |> String.trim()
+    updated = bodies |> Enum.map(fn body ->
+        body
+        |> xpath(~x"//feed/updated/text()")
+        |> List.to_string
+        |> String.trim()
+      end
+      ) |> Enum.join
 
-    version = :crypto.hash(:sha, url <> Enum.join(sheets) <> updated)
+    version = :crypto.hash(:sha, Enum.join(urls) <> Enum.join(sheets) <> updated)
     |> Base.encode16(case: :lower)
 
     if previous_version != nil and version == previous_version do
       throw {:ok, :unchanged}
     end
 
-    worksheets = response.body
-    |> xpath(~x"//feed/entry"l, title: ~x"./title/text()", url: ~x"./link[@type='text/csv']/@href")
-    |> convert_entries([])
-    |> filter_entries(sheets, [])
-    |> load_worksheets([])
+    worksheets = Enum.flat_map(bodies,
+      fn body ->
+        body
+        |> xpath(~x"//feed/entry"l, title: ~x"./title/text()", url: ~x"./link[@type='text/csv']/@href")
+        |> convert_entries([])
+        |> filter_entries(sheets, [])
+        |> load_worksheets([])
+      end
+    )
 
     if not Enum.all?(sheets, fn sheetname -> Enum.any?(worksheets, fn ws -> sheetname == ws.name end) end) do
       loaded = worksheets
